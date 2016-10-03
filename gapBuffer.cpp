@@ -8,7 +8,7 @@ GapBuffer::GapBuffer(int size) {
 	this->buffer = new char[size];
 	this->buffer[0] = '\0';
 	this->gapStart = 0;
-	this->gapEnd = size;
+	this->gapEnd = size-1;
 	this->dirty = false;
 }
 
@@ -17,9 +17,9 @@ bool GapBuffer::is_valid() {
 	if (this->size>0 && 
 		sizeof(this->buffer)==this->size && 
 		this->gapStart >= 0 && 
-		this->gapStart <= this->size &&
+		this->gapStart < this->size &&
 		this->gapEnd >= 0 &&
-		this->gapEnd <= this->size &&
+		this->gapEnd < this->size &&
 		this->gapStart <= this->gapEnd)
 		return true;
 	return false;
@@ -28,14 +28,14 @@ bool GapBuffer::is_valid() {
 // returns whether the buffer gap is empty
 bool GapBuffer::is_empty() { 
 	if (this->gapStart == 0 &&
-		this->gapEnd == this->size)
+		this->gapEnd == this->size-1)
 		return true;
 	return false;
 }
 
 // returns whether the buffer gap is full
 bool GapBuffer::is_full() {
-	if (this->gapStart == this->gapEnd)
+	if (this->gapStart > this->gapEnd)
 		return true;
 	return false; 
 }
@@ -56,7 +56,7 @@ bool GapBuffer::is_at_left() {
 
 // returns whether the buffer gap is at right
 bool GapBuffer::is_at_right() { 
-	if (this->gapEnd == this->size)
+	if (this->gapEnd == this->size-1)
 		return true;
 	return false;
 }
@@ -100,7 +100,9 @@ void GapBuffer::insert_char(char c) {
 // deletes the character before the gap
 void GapBuffer::delete_char() { 
 	if (!this->is_empty()) {
-		(this->gapStart)--;
+		//(this->gapStart)--;
+		this->buffer[this->gapStart-1] = this->buffer[this->gapEnd+1];
+		(this->gapEnd)++;
 		this->dirty = true;
 	}
 }

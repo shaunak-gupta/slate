@@ -1,10 +1,10 @@
 #pragma once
 
 #include <cstdio>
-#include <cstdlib> // declared in line.h
+#include <cstdlib>
 #include <ctype.h>
-#include <cstring> // declared in line.h
-#include <ncurses.h> // -lncurses. declared in page.h
+#include <cstring>
+#include <ncurses.h>
 #include <sys/stat.h>
 
 #include "pagedGapBuffer.h"
@@ -21,6 +21,7 @@ void move_up(PagedGapBuffer *PagedGapBufferp, int *x, int *y);
 void move_down(PagedGapBuffer *p, int *x, int *y);
 
 void insert_char(PagedGapBuffer *p, char ch);
+void remove_char(PagedGapBuffer *p);
 
 void print_page(PagedGapBuffer *p);
 

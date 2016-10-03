@@ -2,14 +2,6 @@
 
 using namespace std;
 
-/**
- * Word Processing Program
- * Features:
- *	-Real time editing
- *	-Saving
- *	-Loading	
- **/
-
 int y_offset = 0; // TODO: move to local scope
 int tab_offset = 0;
 int max_x, max_y;
@@ -59,15 +51,13 @@ int main(int argc, char *argv[]) {
 	x = y = 0;
 
     char status[NAME_LIMIT + 10];
-	while(true)
-	{
+	while(true) {
         print_loc(x, y);
 		beg = 0 + y_offset;
 		end = WIN_SIZE + y_offset;
 		int ch = getch();
 		update_status("Press F4 to quit"); // default text
-		switch(ch)
-		{
+		switch(ch) {
 			case KEY_F(4):
                 if(prompt_yesno("Are you sure you want to quit?"))
 				    goto endnc;
@@ -97,23 +87,15 @@ int main(int argc, char *argv[]) {
 			case KEY_RIGHT:
 				move_right(&page, &x, &y);
 				break;
-			/*
 			case KEY_DC:
 			case 127: // backspace key...
 			case KEY_BACKSPACE:
-				if(strlen(page.text[y + y_offset].line) == 0)
-				{	// can only delete blank lines for now
-					remove_line(&page, y + y_offset);
-					move_up(&page, &x, &y);
-				}
-				else if( x > 1 )
-				{
-					remove_char(&page.text[y + y_offset], x - 2); // delete
-					move_left(&x, &y);				  // char behind cursor
-				}
-				print_page(&page, beg, end);
+				remove_char(&page); 					// delete
+				move_left(&page, &x, &y);					  // char behind cursor
+				print_page(&page);
 				move(y, x);
 				break;
+            /*
             case '\t':
                 for(i = 0; i < TAB_WIDTH; i++)
                 {
@@ -122,7 +104,7 @@ int main(int argc, char *argv[]) {
                     move_right(&page, &x, &y);
                 }
                 break;
-                			*/
+            */
 			case '\n': // newline
 				insert_char(&page, '\n');
 				print_page(&page);
@@ -145,24 +127,41 @@ endnc:
 } // main
 
 // prints a message at the bottom of the window
-void update_status(char *info)
-{
+void update_status(char *info) {
 	int oldy, oldx; getyx(stdscr, oldy, oldx);
 	
 	attron(A_REVERSE);
 	move(LINES - 1, 0);
 	clrtoeol();
 	printw(info);
-	attroff(A_REVERSE);
-	
+	attroff(A_REVERSE);	
 	move(oldy, oldx);
-} // update_status
+}
 
+// inserts a character in the buffer
 void insert_char(PagedGapBuffer *p, char ch) {
 	if (p->current->is_full()) {
 		p->split_buffer();
 	}
 	p->current->insert_char(ch);
+}
+
+// removes a character from the buffer
+void remove_char(PagedGapBuffer *p) {
+	if (!p->current->is_at_left()) {
+		p->current->delete_char();
+	}
+	else if (p->current == p->gapBufferCache.begin())
+		return;
+	else {
+		p->move_backward();
+		p->current->delete_char();
+	}
+
+	// if the entire buffer gap is empty
+	if (p->current->is_empty()) {
+		p->remove_current();
+	}
 }
 
 /* movement */
@@ -178,14 +177,40 @@ void move_left(PagedGapBuffer *p, int *x, int *y) {
 	}
 	if(*x > 0) 
 		move(*y, --(*x));
+	else {
+		int count = 0;
+		list<GapBuffer>::iterator g = p->current;
+		int position = g->gapStart-1;
+		bool flag = true;
+		while (flag) {
+			while (position < 0) {
+				if (g->equals(*(p->gapBufferCache.begin()))) {
+					flag = false;
+					break;
+				}
+				else {
+					g--;
+					position = g->gapStart-1;
+				}
+			}
+			if (!flag || g->buffer[position] == '\n')
+				break;
+			count++;
+			position--;
+		}
+		count = count % (max_x+1);				// if the previous line has more characters than the window width
+		--(*y);
+		*x = count;
+		move(*y, *x);
+	}
 }
 
-
+// moves the cursor to the right
 void move_right(PagedGapBuffer *p, int *x, int *y) {
 	if (!p->current->is_at_right()) {
 		p->current->move_forward();
 	}
-	else if (p->current == p->gapBufferCache.end())
+	else if (p->current != p->gapBufferCache.end() && next(p->current) == p->gapBufferCache.end())
 		return;
 	else {
 		p->move_forward();
@@ -201,16 +226,18 @@ void move_right(PagedGapBuffer *p, int *x, int *y) {
 	move(*y, *x);	
 }
 
-void move_up(PagedGapBuffer *p, int *x, int *y)
-{
-	if( *y > 0 ) {
-		--(*y);
-	}
+// move the cursor position up
+void move_up(PagedGapBuffer *p, int *x, int *y) {
 	int count = 0;
-	while (count<=1) {
+	int chars = 0;
+	int initial_pos = *x;
+	bool flag = true;
+	while (count <= 1) {
 		if (p->current->is_at_left()) {
-			if (p->is_at_left())
+			if (p->is_at_left()) {
+				flag = false;
 				break;
+			}
 			else {
 				p->move_backward();
 			}
@@ -218,7 +245,23 @@ void move_up(PagedGapBuffer *p, int *x, int *y)
 		if (p->current->current_char() == '\n')
 			count++;
 		p->current->move_backward();
+		chars++;
+		if (chars == max_x+1 && count==0)
+			break;
 	}
+
+	if (!flag && count==0) {
+		*x = 0;
+		move(*y, *x);
+		return;
+	}
+
+	if (chars == max_x+1 && count==0) {
+		--(*y);
+		move(*y, *x);
+		return;
+	}
+
 	count = 0;
 	while (true) {
 		if (p->current->is_at_right()) {
@@ -228,16 +271,21 @@ void move_up(PagedGapBuffer *p, int *x, int *y)
 				p->move_forward();
 			}
 		}
-		if (p->current->current_char() == '\n' || count == *x)
-			break;
 		p->current->move_forward();
-		count++;		
+		count++;
+		if (p->current->current_char() == '\n' || count-1 == initial_pos)
+			break;		
 	}
+
+	*x = count-1;			// set the x position to the end of the line if it ends early
+	--(*y);					// move to the previous line
 	move(*y, *x);
 }
 
+// move the cursor position down
 void move_down(PagedGapBuffer *p, int *x, int *y) {
 	int count = 0;
+	int initial_pos = *x;
 	bool flag = true;
 	while (flag) {
 		if (p->current->is_at_right()) {
@@ -247,59 +295,49 @@ void move_down(PagedGapBuffer *p, int *x, int *y) {
 				p->move_forward();
 			}
 		}
-		if (p->current->current_char() == '\n')
-			flag = false;
 		p->current->move_forward();
 		count++;
+		if (p->current->current_char() == '\n' || count == max_x+1)
+			flag = false;
 	}
 
 	// reached the end of pagedGapBuffer, move cursor to the end of the line
 	if (flag) {
-		*x = count;
+		*x += count;
+		move(*y, *x);
+		return;
+	}
+	if (count == max_x+1) {
+		++(*y);
 		move(*y, *x);
 		return;
 	}
 	count = 0;
-	flag = true;
 	while (true) {
 		if (p->current->is_at_right()) {
 			if (p->is_at_right()) {			// encountered end of pagedGapBuffer
-				flag = false;
 				break;
 			}
 			else {
 				p->move_forward();
 			}
 		}
-		if (p->current->current_char() == '\n' || count == *x)
-			break;
 		p->current->move_forward();
-		count++;		
+		count++;
+		if (p->current->current_char() == '\n' || count-1 == initial_pos)
+			break;		
 	}
+
 	if (p->current->is_at_left() && !p->is_at_left()) {
 		p->move_backward();
 	}
 	p->current->move_backward();
-	*x = count;				// set the x position to the end of the line if it ends early
-	if (flag)
-		++(*y);					// move to the next line
+	*x = count-1;				// set the x position to the end of the line if it ends early
+	++(*y);					// move to the next line
 	move(*y, *x);
 }
-/* movement */
 
-int count_lines(FILE *fp)
-{
-	char ch = '\0';
-	int count = 0;
-	while((ch = fgetc(fp)) != EOF)
-		if( ch == '\n' )
-			count++;
-
-    fseek(fp, 0, SEEK_SET); // go to beginning of file
-	return count;
-} // count_lines
-
-/* saving and loading */
+// load file data into file buffer
 void load_file(PagedGapBuffer *p, char *filename) {
 	FILE *fp = fopen(filename, "r");
 	int size = get_file_size(filename);
@@ -311,8 +349,7 @@ void load_file(PagedGapBuffer *p, char *filename) {
 
     p->readData(fp);
 	fclose(fp);
-
-} // load_file
+}
 
 /*
 void save_file(PAGE *p)
@@ -335,7 +372,6 @@ void save_file(PAGE *p)
 
 } // save_file
 */
-
 
 // print the page to the screen
 void print_page(PagedGapBuffer *p) {
@@ -388,6 +424,11 @@ void print_page(PagedGapBuffer *p) {
 			}
 		}		
 	}
+	clrtoeol();
+	y++;
+	x=0;
+	move(y,x);
+	clrtoeol();
 }
 
 int file_exists(char *filename)
@@ -399,7 +440,6 @@ int file_exists(char *filename)
     }
     return 0;
 }
-/* saving and loading */
 
 // get file size
 off_t get_file_size(const char *filename) {
