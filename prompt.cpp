@@ -1,5 +1,7 @@
 #include "prompt.h"
 
+using namespace std;
+
 static int center_x(int width);
 static int center_y(int height);
 static WINDOW* create_prompt(const char *message, int height, int width);

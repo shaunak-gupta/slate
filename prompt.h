@@ -1,5 +1,4 @@
-#ifndef PROMPT_H
-#define PROMPT_H
+#pragma once
 
 #include <ncurses.h>
 #include <cstring>
@@ -15,5 +14,3 @@
 
 void prompt_string(const char *message, char *name, int size);
 int prompt_yesno(const char *message);
-
-#endif

@@ -1,42 +1,19 @@
 #include "gapBuffer.h"
 
-class BufferGap
-{
-	char *buffer;
-	int size; // size of array, not string
-	int blockOffset;
-	int id;
-	bool flag;
-
-	public:
-	BufferGap(int size);
-	int gapStart;
-	int gapEnd;
-
-	bool is_valid();
-	bool is_empty();
-	bool is_full();
-	bool is_at_left();
-	bool is_at_right();
-
-	void move_forward();
-	void move_backward();
-	void insert_char(char c);
-	void delete_char();
-};
+using namespace std;
 
 // initialize a new empty buffer gap
-BufferGap::BufferGap(int size) { 
+GapBuffer::GapBuffer(int size) { 
 	this->size = size;
 	this->buffer = new char[size];
 	this->buffer[0] = '\0';
 	this->gapStart = 0;
 	this->gapEnd = size;
-	this->flag = false;
+	this->dirty = false;
 }
 
 // returns whether the buffer gap is valid
-bool BufferGap::is_valid() { 
+bool GapBuffer::is_valid() { 
 	if (this->size>0 && 
 		sizeof(this->buffer)==this->size && 
 		this->gapStart >= 0 && 
@@ -49,7 +26,7 @@ bool BufferGap::is_valid() {
 }
 
 // returns whether the buffer gap is empty
-bool BufferGap::is_empty() { 
+bool GapBuffer::is_empty() { 
 	if (this->gapStart == 0 &&
 		this->gapEnd == this->size)
 		return true;
@@ -57,57 +34,103 @@ bool BufferGap::is_empty() {
 }
 
 // returns whether the buffer gap is full
-bool BufferGap::is_full() {
+bool GapBuffer::is_full() {
 	if (this->gapStart == this->gapEnd)
 		return true;
 	return false; 
 }
 
+// returns whether the buffer gap is dirty
+bool GapBuffer::is_dirty() {
+	if (this->dirty == true)
+		return true;
+	return false; 
+}
+
 // returns whether the buffer gap is at left
-bool BufferGap::is_at_left() { 
+bool GapBuffer::is_at_left() { 
 	if(this->gapStart == 0)
 		return true;
 	return false;
 }
 
 // returns whether the buffer gap is at right
-bool BufferGap::is_at_right() { 
+bool GapBuffer::is_at_right() { 
 	if (this->gapEnd == this->size)
 		return true;
 	return false;
 }
 
+// returns whether two buffer gaps are the same
+bool GapBuffer::equals(GapBuffer b) { 
+	if (this->blockOffset == b.blockOffset && this->id == b.id)
+		return true;
+	return false;
+}
+
 // moves the cursor to the right
-void BufferGap::move_forward() {
+void GapBuffer::move_forward() {
 	if (!this->is_at_right()) {
-		this->buffer[gapStart] = this->buffer[gapEnd];
+		this->buffer[gapStart] = this->buffer[gapEnd+1];
 		(this->gapStart)++;
 		(this->gapEnd)++;
 	} 
 }
 
 // moves the cursor to the left
-void BufferGap::move_backward() { 
+void GapBuffer::move_backward() { 
 	if (!this->is_at_left()) {
+		this->buffer[gapEnd] = this->buffer[gapStart-1];
 		(this->gapStart)--;
 		(this->gapEnd)--;
-		this->buffer[gapEnd] = this->buffer[gapStart];
 	} 
 }
 
 // inserts the character c before the gap
-void BufferGap::insert_char(char c) { 
+void GapBuffer::insert_char(char c) { 
 	if (!this->is_full()) {
-		this->buffer[gapStart] = c;
-		(this->gapStart)++;
-		this->flag = true;
+		//this->buffer[gapStart] = c;
+		//(this->gapStart)++;
+		this->buffer[gapEnd] = c;
+		(this->gapEnd)--;
+		this->dirty = true;
 	}
 }
 
 // deletes the character before the gap
-void BufferGap::delete_char() { 
+void GapBuffer::delete_char() { 
 	if (!this->is_empty()) {
 		(this->gapStart)--;
-		this->flag = true;
+		this->dirty = true;
 	}
+}
+
+// returns the buffer value
+char* GapBuffer::get_buffer() { 
+	return buffer;
+}
+
+// sets the buffer value
+int GapBuffer::set_buffer(char* buffer, int size) {
+	if (this->gapEnd+1+size == this->size) {
+		strncpy(this->buffer+this->gapEnd+1, buffer, size);
+		return 0;
+	}
+	return 1;
+}
+
+// returns the current character just before cursor position
+char GapBuffer::current_char() {
+	if (this->is_at_left()) {
+		return '\0';
+	}
+	return this->buffer[gapStart-1];
+}
+
+// returns the next character just after cursor position
+char GapBuffer::next_char() {
+	if (this->is_at_right()) {
+		return '\0';
+	}
+	return this->buffer[gapEnd+1];
 }

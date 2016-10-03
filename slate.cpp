@@ -1,5 +1,7 @@
 #include "slate.h"
 
+using namespace std;
+
 /**
  * Word Processing Program
  * Features:
@@ -10,11 +12,11 @@
 
 int y_offset = 0; // TODO: move to local scope
 int tab_offset = 0;
+int max_x, max_y;
 
 #define DEBUG
 
-void print_loc(int x, int y)
-{
+void print_loc(int x, int y) {
 	#ifdef DEBUG
 	int oldx, oldy;
 	getyx(stdscr, oldy, oldx);
@@ -23,43 +25,38 @@ void print_loc(int x, int y)
 	#endif
 }
 
-int main(int argc, char *argv[])
-{	
-	PagedGapBuffer page;
+int main(int argc, char *argv[]) {	
+	PagedGapBuffer page(CACHE_SIZE);
 
-	if(argc > 1)
-	{
-        if(file_exists(argv[1]))
-        {
+	if(argc > 1) {
+        if(file_exists(argv[1])) {
 		    load_file(&page, argv[1]);
         }
-        else
-        {
-            init_page(&page, argv[1], PAGE_SIZE);
-            page.numlines = 1;
+        else {
+        	page.initialize(argv[1], BUFFER_SIZE-GAP_SIZE);
         }
 	}
-	else // initialize
-	{
-		init_page(&page, "untitled.txt", PAGE_SIZE);
-		page.numlines = 1;
+	else { // initialize
+		page.initialize("untitled.txt", BUFFER_SIZE-GAP_SIZE);
 	}
 	
 	/* curses interface */
 	initscr();
 	noecho();
 	keypad(stdscr, true);
-	
+
+	getmaxyx(stdscr, max_y, max_x);
+
 	int beg = 0;
 	int end = WIN_SIZE;
 	int y, x; // position on screen
-    int i;
-	
 
 	update_status("Press F4 to quit");
 	
-	print_page(&page, beg, end);
-	getyx(stdscr, y, x);
+	print_page(&page);
+	//getyx(stdscr, y, x);
+	move(0,0);
+	x = y = 0;
 
     char status[NAME_LIMIT + 10];
 	while(true)
@@ -74,18 +71,18 @@ int main(int argc, char *argv[])
 			case KEY_F(4):
                 if(prompt_yesno("Are you sure you want to quit?"))
 				    goto endnc;
-	            print_page(&page, beg, end);
+	            print_page(&page);
 				break;
 			case KEY_F(5):
-				save_file(&page);
+			//	save_file(&page);
                 sprintf(status, "Saved as \'%s\'", page.filename);
 				update_status(status);
 				break;
             case KEY_F(6):
                 prompt_string("Save As:", page.filename, NAME_LIMIT);
-                save_file(&page);
+            //  save_file(&page);
                 sprintf(status, "Saved as \'%s\'", page.filename);
-				print_page(&page, beg, end);
+				print_page(&page);
 				update_status(status);
                 break;
 			case KEY_UP:
@@ -95,11 +92,12 @@ int main(int argc, char *argv[])
 				move_down(&page, &x, &y);
 				break;
 			case KEY_LEFT:
-				move_left(&x, &y);
+				move_left(&page, &x, &y);
 				break;
 			case KEY_RIGHT:
 				move_right(&page, &x, &y);
 				break;
+			/*
 			case KEY_DC:
 			case 127: // backspace key...
 			case KEY_BACKSPACE:
@@ -124,16 +122,17 @@ int main(int argc, char *argv[])
                     move_right(&page, &x, &y);
                 }
                 break;
+                			*/
 			case '\n': // newline
-				insert_line(&page, y + y_offset + 1);
-				print_page(&page, beg, end);
-				move_down(&page, &x, &y);
+				insert_char(&page, '\n');
+				print_page(&page);
+				move_right(&page, &x, &y);
 				break;
 			default: // all other chars
 				if( isprint(ch) )
 				{
-					insert_char(&page.text[y + y_offset], ch, x - 1);
-					print_page(&page, beg, end);
+					insert_char(&page, ch);
+					print_page(&page);
 					move_right(&page, &x, &y);
 				}
 		}
@@ -141,7 +140,7 @@ int main(int argc, char *argv[])
 endnc:	
 	/* end curses */
     endwin();
-	dest_page(&page);
+	//dest_page(&page);
 	return EXIT_SUCCESS;
 } // main
 
@@ -159,54 +158,131 @@ void update_status(char *info)
 	move(oldy, oldx);
 } // update_status
 
+void insert_char(PagedGapBuffer *p, char ch) {
+	if (p->current->is_full()) {
+		p->split_buffer();
+	}
+	p->current->insert_char(ch);
+}
+
 /* movement */
-void move_left(int *x, int *y)
-{
-	if(*x - 1 > 0) move(*y, --(*x));
+void move_left(PagedGapBuffer *p, int *x, int *y) {
+	if (!p->current->is_at_left()) {
+		p->current->move_backward();
+	}
+	else if (p->current == p->gapBufferCache.begin())
+		return;
+	else {
+		p->move_backward();
+		p->current->move_backward();
+	}
+	if(*x > 0) 
+		move(*y, --(*x));
 }
 
 
-void move_right(PAGE *p, int *x, int *y)
-{
-	if(*x <= strlen(p->text[*y + y_offset].line)) 
-    {
-        if(p->text[*y + y_offset].line[*x + tab_offset] == '\t') {
-            move(*y, ++(*x));
-        } else {
-            move(*y, ++(*x));
-        }
-    }
+void move_right(PagedGapBuffer *p, int *x, int *y) {
+	if (!p->current->is_at_right()) {
+		p->current->move_forward();
+	}
+	else if (p->current == p->gapBufferCache.end())
+		return;
+	else {
+		p->move_forward();
+		p->current->move_forward();
+	}
+	if (p->current->current_char() == '\n' || *x == max_x) {
+		*x = 0;
+		++(*y);
+	}
+	else
+		++(*x);
+
+	move(*y, *x);	
 }
 
-void move_up(PAGE *p, int *x, int *y)
+void move_up(PagedGapBuffer *p, int *x, int *y)
 {
-	if( *y > 0 )
-	{
+	if( *y > 0 ) {
 		--(*y);
 	}
-	else if (y_offset > 0)
-	{
-		--(y_offset);
-		print_page(p, 0 + y_offset, WIN_SIZE + y_offset);	
+	int count = 0;
+	while (count<=1) {
+		if (p->current->is_at_left()) {
+			if (p->is_at_left())
+				break;
+			else {
+				p->move_backward();
+			}
+		}
+		if (p->current->current_char() == '\n')
+			count++;
+		p->current->move_backward();
 	}
-	if( *x > strlen(p->text[*y + y_offset].line) + 1 ) // cursor adjusts
-		*x = strlen(p->text[*y + y_offset].line) + 1;  // to smaller lines
+	count = 0;
+	while (true) {
+		if (p->current->is_at_right()) {
+			if (p->is_at_right())
+				break;
+			else {
+				p->move_forward();
+			}
+		}
+		if (p->current->current_char() == '\n' || count == *x)
+			break;
+		p->current->move_forward();
+		count++;		
+	}
 	move(*y, *x);
 }
-void move_down(PAGE *p, int *x, int *y)
-{
-	if( *y < WIN_SIZE - 1 && *y < p->numlines  - 1 )
-	{
-		 ++(*y);
-	}
-	else if ( *y + y_offset < p->numlines - 1 )
-	{
-		++(y_offset);
-		print_page(p, 0 + y_offset, WIN_SIZE + y_offset);	
+
+void move_down(PagedGapBuffer *p, int *x, int *y) {
+	int count = 0;
+	bool flag = true;
+	while (flag) {
+		if (p->current->is_at_right()) {
+			if (p->is_at_right())
+				break;
+			else {
+				p->move_forward();
+			}
+		}
+		if (p->current->current_char() == '\n')
+			flag = false;
+		p->current->move_forward();
+		count++;
 	}
 
-	if( *x > strlen(p->text[*y + y_offset].line) + 1 )
-		*x = strlen(p->text[*y + y_offset].line) + 1;
+	// reached the end of pagedGapBuffer, move cursor to the end of the line
+	if (flag) {
+		*x = count;
+		move(*y, *x);
+		return;
+	}
+	count = 0;
+	flag = true;
+	while (true) {
+		if (p->current->is_at_right()) {
+			if (p->is_at_right()) {			// encountered end of pagedGapBuffer
+				flag = false;
+				break;
+			}
+			else {
+				p->move_forward();
+			}
+		}
+		if (p->current->current_char() == '\n' || count == *x)
+			break;
+		p->current->move_forward();
+		count++;		
+	}
+	if (p->current->is_at_left() && !p->is_at_left()) {
+		p->move_backward();
+	}
+	p->current->move_backward();
+	*x = count;				// set the x position to the end of the line if it ends early
+	if (flag)
+		++(*y);					// move to the next line
 	move(*y, *x);
 }
 /* movement */
@@ -224,52 +300,21 @@ int count_lines(FILE *fp)
 } // count_lines
 
 /* saving and loading */
-void load_file(PagedGapBuffer *p, char *filename)
-{
+void load_file(PagedGapBuffer *p, char *filename) {
 	FILE *fp = fopen(filename, "r");
-	int size = count_lines(fp) * 2;
-	char ch = '\0';
-	int line;
+	int size = get_file_size(filename);
+	p->initialize(filename, size-1);
 
-    if(size < PAGE_SIZE)
-        size = PAGE_SIZE;
-
-	init_page(p, filename, size);
-
-    if(fp == NULL) // file doesn't exist yet. don't bother reading
-    {
-        p->numlines = 1;
+    if(fp == NULL) { // file doesn't exist yet. don't bother reading
         return;
     }
 
-
-    for(line = 0; line < size && ch != EOF; line++)
-    {
-        ch = fgetc(fp);
-        while(ch != '\n' && ch != EOF)
-        {
-            LINE *currline = &(p->text[line]);
-            if(ch != '\t')
-            {
-                add_char(currline, ch);
-            }
-            else // tab. add 4 spaces instead
-            {
-                int i;
-                for(i = 0; i < TAB_WIDTH; i++)
-                {
-                    add_char(currline, ' ');
-                }
-            }
-            ch = fgetc(fp);
-        }
-        p->numlines++;
-    }
-
+    p->readData(fp);
 	fclose(fp);
 
 } // load_file
 
+/*
 void save_file(PAGE *p)
 {
 	FILE *fp = fopen(p->filename, "w");
@@ -289,6 +334,61 @@ void save_file(PAGE *p)
 	fclose(fp);
 
 } // save_file
+*/
+
+
+// print the page to the screen
+void print_page(PagedGapBuffer *p) {
+	int position = p->startOffsetWithinBuffer;
+	int y, x;
+	bool flag = true;
+	x = y = 0;
+	for (list<GapBuffer>::iterator ctr = p->startBuffer; ctr != p->gapBufferCache.end() && flag; ctr++) {
+		while (position < ctr->gapStart) {
+			if (ctr->buffer[position] == '\n') {
+				y++;
+				x=0;
+				clrtoeol();
+				move(y,x);
+			}
+			else {
+				mvaddch(y,x,ctr->buffer[position]);
+				x++;
+			}
+			position++;
+			if (x > max_x) {
+				y++;
+				x=0;
+			}
+			if (y > max_y) {
+				flag = false;
+				break;
+			}
+		}
+		position = ctr->gapEnd + 1;
+		while (position < ctr->size) {
+			if (ctr->buffer[position] == '\n') {
+				y++;
+				x=0;
+				clrtoeol();
+				move(y,x);
+			}
+			else {
+				mvaddch(y,x,ctr->buffer[position]);
+				x++;
+			}
+			position++;
+			if (x > max_x) {
+				y++;
+				x=0;
+			}
+			if (y > max_y) {
+				flag = false;
+				break;
+			}
+		}		
+	}
+}
 
 int file_exists(char *filename)
 {
@@ -300,3 +400,13 @@ int file_exists(char *filename)
     return 0;
 }
 /* saving and loading */
+
+// get file size
+off_t get_file_size(const char *filename) {
+    struct stat st; 
+
+    if (stat(filename, &st) == 0)
+        return st.st_size;
+
+    return -1; 
+}
